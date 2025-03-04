@@ -1,10 +1,10 @@
 declare namespace NodeJS {
   interface ProcessEnv {
-    DB_NAME: string;
-    DB_USER: string;
-    DB_PASS: string;
-    DB_HOST: string;
-    DB_PORT: number;
+    MONGO_URI: string;
+    HOST: string;
     PORT: number;
+    JWT_SECRET: string;
+    GOOGLE_CLIENT_ID: string;
+    GOOGLE_CLIENT_SECRET: string;
   }
 }
