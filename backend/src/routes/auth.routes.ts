@@ -1,6 +1,6 @@
 import { Router } from "express";
-import passport from "../../config/passport";
-import { handleGoogleCallback } from "../controllers/auth.controller";
+import passport from "../../config/passport.js";
+import { handleGoogleCallback } from "../controllers/auth.controller.js";
 
 const authRoutes = Router();
 

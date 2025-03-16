@@ -1,14 +1,14 @@
 import mongoose from "mongoose";
 
 const AuctionItemSchema = new mongoose.Schema({
-  auction_id: {
+  auctionId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Auction",
     required: true,
   },
-  item_name: { type: String, required: true },
+  name: { type: String, required: true },
   price: { type: Number, required: true },
-  win_by: {
+  winBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Player",
     default: null,

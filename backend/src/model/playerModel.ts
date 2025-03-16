@@ -1,12 +1,16 @@
-import mongoose from "mongoose";
+import mongoose, { Document, Model } from "mongoose";
 
-const PlayerSchema = new mongoose.Schema({
+interface Player extends Document {
+  name: string;
+  email: string;
+}
+
+const PlayerSchema = new mongoose.Schema<Player>({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
 });
 
-const PlayerModel =
-  mongoose.models.Player || mongoose.model("Player", PlayerSchema);
+const PlayerModel: Model<Player> =
+  mongoose.models.Player || mongoose.model<Player>("Player", PlayerSchema);
 
 export default PlayerModel;

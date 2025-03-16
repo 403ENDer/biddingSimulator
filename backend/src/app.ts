@@ -1,16 +1,22 @@
 import express from "express";
-import mongoose from "../config/db";
-import auctionRoutes from "./routes/auction.routes";
-import authRoutes from "./routes/auth.routes";
+import mongoose from "../config/db.js";
+import auctionRoutes from "./routes/auction.routes.js";
+import authRoutes from "./routes/auth.routes.js";
+import playerRoute from "./routes/bidding.routes.js";
 import dotenv from "dotenv";
 import session from "express-session";
 import cookieParser from "cookie-parser";
-import passport from "../config/passport";
+import passport from "../config/passport.js";
+import { createServer } from "http";
+import { setupWebSocket } from "./socket.io.js";
 
 const app = express();
+const server = createServer(app);
+setupWebSocket(server);
 dotenv.config();
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(
   session({
     secret: process.env.JWT_SECRET,
@@ -28,8 +34,9 @@ const host = process.env.HOST || "localhost";
 // Using Routes
 app.use("/api/auctions", auctionRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/player", playerRoute);
 
-app.listen(Number(port), host, () => {
+server.listen(Number(port), host, () => {
   mongoose.connect;
   console.log(`Server started at http://${host}:${port}`);
 });
