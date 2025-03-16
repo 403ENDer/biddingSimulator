@@ -10,7 +10,7 @@ const Login = ({ onLogin }) => {
 
     const handleLogin = () => {
         if (email.trim() !== "") {
-            onLogin(email); // Navigate to Home page on login
+            onLogin(email); 
         }
     };
 
