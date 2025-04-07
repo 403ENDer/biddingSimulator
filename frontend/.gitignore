@@ -1,8 +1,2 @@
 .env
 node_modules/
-
-
-#Backend files to be ignored in github
-
-backend/.env
-backend/node_modules/
