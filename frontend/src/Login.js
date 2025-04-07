@@ -1,85 +1,89 @@
-import React, { useState } from "react";
-import * as Components from "./Components";
-import Typewriter from "typewriter-effect";
-import hammerGif from "./assets/hammer.gif";
+import React, { useState } from "react"; 
+import * as Components from "./Components"; 
+import Typewriter from "typewriter-effect"; 
+import hammerGif from "./assets/hammer.gif"; 
+import signin from "./assets/signin.gif"; 
+import GoogleIcon from "@mui/icons-material/Google";  
 
-const Login = ({ onLogin }) => {
-    const [signIn, toggle] = useState(true);
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
+const Login = ({ onLogin }) => { 
+    const [email, setEmail] = useState(""); 
+    const [password, setPassword] = useState(""); 
 
-    const handleLogin = () => {
-        if (email.trim() !== "") {
+    const handleLogin = () => { 
+        if (email.trim() !== "") { 
             onLogin(email); 
-        }
-    };
+        } 
+    }; 
 
-    return (
-        <Components.Container>
-            {/* Sign Up Section */}
-            <Components.SignUpContainer signinIn={signIn}>
-                <Components.Form>
-                    <Components.Title>Create Account</Components.Title>
-                    <Components.Input type="text" placeholder="Name" />
-                    <Components.Input type="email" placeholder="Email" />
-                    <Components.Input type="password" placeholder="Password" />
-                    <Components.Button>Sign Up</Components.Button>
-                </Components.Form>
-            </Components.SignUpContainer>
+    const handleGoogleLogin = () => { 
+        
+        window.location.href = "http://localhost:3333/api/auth/google"; 
+    }; 
 
-            {/* Sign In Section */}
-            <Components.SignInContainer signinIn={signIn}>
-                <Components.Form>
-                    <Components.Title>Sign in</Components.Title>
-                    <Components.Input 
-                        type="email" 
-                        placeholder="Email" 
-                        value={email} 
-                        onChange={(e) => setEmail(e.target.value)} 
-                    />
-                    <Components.Input 
-                        type="password" 
-                        placeholder="Password" 
-                        value={password} 
-                        onChange={(e) => setPassword(e.target.value)} 
-                    />
-                    <Components.Anchor href="#">Forgot your password?</Components.Anchor>
-                    <Components.Button onClick={handleLogin}>
-                        Sign In
-                    </Components.Button>
-                </Components.Form>
-            </Components.SignInContainer>
+    return ( 
+        <Components.Container> 
+            {/* Sign In Section */} 
+            <Components.SignInContainer signinIn={true}> 
+                <Components.Form> 
+                    <Components.Title style={{ color: "#ff4554" }}>Sign in</Components.Title> 
+                    
+                    <img 
+                        src={signin} 
+                        alt="Sign in Animation" 
+                        style={{ width: "120px", margin: "10px auto" }} 
+                    /> 
+                    
+                    <Components.Button 
+                        onClick={handleGoogleLogin} 
+                        style={{ 
+                            backgroundColor: "#ff4264", 
+                            color: "#fff", 
+                            marginTop: "10px", 
+                            display: "flex", 
+                            alignItems: "center", 
+                            justifyContent: "center" 
+                        }} 
+                    > 
+                        <GoogleIcon style={{ marginRight: "8px" }} /> 
+                        Sign in with Google 
+                    </Components.Button> 
+                </Components.Form> 
+            </Components.SignInContainer> 
 
-            {/* Overlay Container */}
-            <Components.OverlayContainer signinIn={signIn}>
-                <Components.Overlay signinIn={signIn}>
-
-                    {/* Left Overlay Panel (Welcome Back) */}
-                    <Components.LeftOverlayPanel signinIn={signIn}>
-                        <Components.Title>
-                            <Typewriter options={{ strings: ["Welcome Back Biddr!"], autoStart: true, loop: true, delay: 100 }} />
-                        </Components.Title>
-                        <img src={hammerGif} alt="Hammer GIF" style={{ width: "80px", marginTop: "10px" }} />
-                        <Components.GhostButton onClick={() => toggle(true)}>
-                            Sign In
-                        </Components.GhostButton>
-                    </Components.LeftOverlayPanel>
-
-                    {/* Right Overlay Panel (Hello Biddr) */}
-                    <Components.RightOverlayPanel signinIn={signIn}>
-                        <Components.Title>
-                            <Typewriter options={{ strings: ["Hello, Biddr!"], autoStart: true, loop: true, delay: 100 }} />
-                        </Components.Title>
-                        <img src={hammerGif} alt="Hammer GIF" style={{ width: "80px", marginTop: "10px" }} />
-                        <Components.GhostButton onClick={() => toggle(false)}>
-                            Sign Up
-                        </Components.GhostButton>
-                    </Components.RightOverlayPanel>
-
-                </Components.Overlay>
-            </Components.OverlayContainer>
-        </Components.Container>
-    );
-};
+            {/* Overlay Container */} 
+            <Components.OverlayContainer signinIn={true}> 
+                <Components.Overlay signinIn={true}> 
+                    <Components.RightOverlayPanel signinIn={true}> 
+                        <Components.Title style={{ fontSize: "36px" }}> 
+                            <Typewriter 
+                                options={{ 
+                                    strings: ["Hello, Biddr!"], 
+                                    autoStart: true, 
+                                    loop: true, 
+                                    delay: 100 
+                                }} 
+                            /> 
+                        </Components.Title> 
+                        <img 
+                            src={hammerGif} 
+                            alt="Hammer GIF" 
+                            style={{ width: "100px", marginTop: "10px" }} 
+                        /> 
+                        <Components.Title style={{ marginTop: "20px", fontSize: "16px" }}> 
+                            <Typewriter 
+                                options={{ 
+                                    strings: ["Ready ! set !! bid !!!"], 
+                                    autoStart: true, 
+                                    loop: true, 
+                                    delay: 100 
+                                }} 
+                            /> 
+                        </Components.Title> 
+                    </Components.RightOverlayPanel> 
+                </Components.Overlay> 
+            </Components.OverlayContainer> 
+        </Components.Container> 
+    ); 
+}; 
 
 export default Login;
