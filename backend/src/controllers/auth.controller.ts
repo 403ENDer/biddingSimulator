@@ -20,6 +20,8 @@ export const handleGoogleCallback = async (req: Request, res: Response) => {
     name: player.name,
   });
 
-  res.cookie("token", token, { httpOnly: true });
-  res.status(200).send({ token: token });
+  // res.cookie("token", token, { httpOnly: true });
+  // res.status(200).send({ token: token });
+  res.redirect(`http://localhost:3000/auth/success?token=${token}`);
+
 };

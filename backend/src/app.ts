@@ -9,11 +9,19 @@ import cookieParser from "cookie-parser";
 import passport from "../config/passport.js";
 import { createServer } from "http";
 import { setupWebSocket } from "./socket.io.js";
+import cors from "cors";
 
 const app = express();
 const server = createServer(app);
 setupWebSocket(server);
 dotenv.config();
+
+
+app.use(cors({
+  origin: "http://localhost:3000",  // Allow requests from your frontend's origin
+  methods: ["GET", "POST", "PUT", "DELETE"],  // Allow specific HTTP methods
+  credentials: true,  // Allow cookies or authentication headers if needed
+}));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

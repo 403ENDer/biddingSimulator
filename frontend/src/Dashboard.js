@@ -1,39 +1,67 @@
 import React, { useEffect, useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, IconButton
+  Button, TextField, IconButton, CircularProgress
 } from "@mui/material";
 import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
 import DeleteIcon from '@mui/icons-material/Delete';
 import GavelIcon from "@mui/icons-material/Gavel";
 import { FaBell, FaSignOutAlt } from "react-icons/fa";
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+
 
 const Dashboard = ({ username, onLogout }) => {
   const [auctions, setAuctions] = useState([]);
   const [selectedAuction, setSelectedAuction] = useState(null);
   const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const playerId = localStorage.getItem("playerId");
+  console.log("Player ID:", playerId); // Debugging line
+  
 
   useEffect(() => {
     fetchUserAuctions();
   }, []);
 
   const fetchUserAuctions = async () => {
+    setLoading(true);
+    setError(null);
+  
+    const token = localStorage.getItem("token");
+    console.log("Token:", token); // Debugging line
+  
+    if (!token) {
+      setError("Missing token.");
+      setLoading(false);
+      return;
+    }
+  
     try {
-      const res = await fetch("http://localhost:3333/api/auctions/", {
+      const res = await fetch(`http://localhost:3333/api/auctions/player?playerId=${playerId}`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       });
+  
+      if (!res.ok) throw new Error("Failed to fetch auctions");
+  
       const data = await res.json();
+      console.log("Fetched data:", data);
       setAuctions(data.auctions || []);
-    } catch (error) {
-      console.error("Error fetching auctions:", error);
+    } catch (err) {
+      setError(err.message || "Something went wrong");
+    } finally {
+      setLoading(false);
     }
   };
+  
+
 
   const handleUpdate = (auction) => {
-    setSelectedAuction({ ...auction }); // clone to editable object
+    setSelectedAuction({ ...auction });
     setOpenUpdateDialog(true);
   };
 
@@ -85,11 +113,11 @@ const Dashboard = ({ username, onLogout }) => {
   };
 
   return (
-    <div style={styles.container}>
+    <div style={styles.homeContainer}>
       {/* Header */}
       <div style={styles.headerBox}>
-        <h2 style={{ display: "flex", alignItems: "center", color: "#ff4552" }}>
-          <GavelIcon style={{ marginRight: "10px" }} /> Biddr
+        <h2 style={styles.logo}>
+          <GavelIcon style={{ fontSize: "30px", marginRight: "10px" }} />Biddr
         </h2>
         <div style={styles.headerRight}>
           <span style={styles.welcomeText}>Welcome, {username}</span>
@@ -98,31 +126,47 @@ const Dashboard = ({ username, onLogout }) => {
         </div>
       </div>
 
-      {/* Auction List */}
-      <div style={styles.listContainer}>
-        {auctions.map((auction) => (
-          <div key={auction._id} style={styles.auctionCard}>
-            <div style={styles.cardHeader}>
-              <h3>{auction.name}</h3>
-              <div>
-                <IconButton onClick={() => handleUpdate(auction)}>
-                  <SystemUpdateAltIcon style={styles.actionIcon} />
-                </IconButton>
-                <IconButton onClick={() => handleDelete(auction)}>
-                  <DeleteIcon style={styles.actionIcon} />
-                </IconButton>
+      {/* Auctions */}
+      <div style={styles.squareBox}>
+      <h3 style={{fontSize:"30px"}}>
+          <ReceiptLongIcon style={{ verticalAlign: "middle", marginRight: "5px"}} />
+          Your Auctions
+      </h3>
+
+        {loading ? (
+          <CircularProgress />
+        ) : error ? (
+          <p style={{ color: "red" }}>{error}</p>
+        ) : auctions.length === 0 ? (
+          <p>No auctions created yet.</p>
+        ) : (
+          auctions.map((auction) => (
+            <div key={auction._id} style={styles.auctionCard}>
+              <div style={styles.cardHeader}>
+                <h4 style={{fontSize:"23px"}}>{auction.name}</h4>
+                <div>
+                  <IconButton onClick={() => handleUpdate(auction)}>
+                    <SystemUpdateAltIcon style={{ color: "#ff4552" }} />
+                  </IconButton>
+                  <IconButton onClick={() => handleDelete(auction)}>
+                    <DeleteIcon style={{ color: "#ff4552" }} />
+                  </IconButton>
+                </div>
+              </div>
+              <p>
+              <EmojiEventsIcon style={{ verticalAlign: "middle", marginRight: "5px" }} />
+              Slots: {auction.slots}
+              </p>
+              <div style={styles.itemContainer}>
+                {auction.items?.map((item, i) => (
+                  <button key={i} style={styles.itemBtn}>
+                    {item.name} - ₹{item.price}
+                  </button>
+                ))}
               </div>
             </div>
-            <p>Slots: {auction.slots}</p>
-            <div style={styles.itemContainer}>
-              {auction.items?.map((item, i) => (
-                <button key={i} style={styles.itemBtn}>
-                  {item.name} - ${item.price}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Update Dialog */}
@@ -188,70 +232,51 @@ const Dashboard = ({ username, onLogout }) => {
   );
 };
 
-// Styles (same as before)
+// Shared Styles
 const styles = {
-  container: {
-    padding: "20px",
-    backgroundColor: "#f8f9fa",
-    minHeight: "100vh",
+  homeContainer: {
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+    height: "100vh", backgroundColor: "#f8f9fa",
   },
   headerBox: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    padding: "10px 20px",
-    borderRadius: "8px",
-    marginBottom: "30px",
-    boxShadow: "0px 4px 6px rgba(0, 0, 0, 0.1)",
+    position: "absolute", top: "20px", left: "20px", right: "20px",
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    padding: "10px 20px", backgroundColor: "#fff",
+    boxShadow: "0px 4px 6px rgba(0, 0, 0, 0.1)", borderRadius: "8px"
+  },
+  logo: {
+    display: "flex", alignItems: "center", fontSize: "24px",
+    fontWeight: "bold", color: "#ff4552"
   },
   headerRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: "15px",
+    display: "flex", alignItems: "center", gap: "15px"
   },
   welcomeText: {
-    fontSize: "16px",
-    fontWeight: "500",
+    fontSize: "16px", fontWeight: "500"
   },
   icon: {
-    fontSize: "20px",
-    cursor: "pointer",
+    fontSize: "20px", cursor: "pointer"
   },
-  listContainer: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "20px",
+  squareBox: {
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start",
+    width: "600px", height: "auto", maxHeight: "65vh", overflowY: "auto",
+    backgroundColor: "#fff", boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)",
+    borderRadius: "10px", textAlign: "center", padding: "20px", marginTop: "130px",
   },
   auctionCard: {
-    backgroundColor: "#ff4551",
-    color: "#fff",
-    borderRadius: "10px",
-    padding: "20px",
-    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+    width: "100%", backgroundColor: "#ffe2e5", borderRadius: "10px",
+    padding: "15px", marginBottom: "15px", textAlign: "left"
   },
   cardHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  actionIcon: {
-    color: "#fff",
+    display: "flex", justifyContent: "space-between", alignItems: "center"
   },
   itemContainer: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "10px",
-    marginTop: "10px",
+    display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "10px"
   },
   itemBtn: {
-    backgroundColor: "#fff",
-    color: "#ff4551",
-    border: "none",
-    borderRadius: "5px",
-    padding: "5px 10px",
-    fontWeight: "bold",
-  },
+    backgroundColor: "#ff4552", color: "white", border: "none",
+    padding: "5px 10px", borderRadius: "5px", fontWeight: "bold"
+  }
 };
 
 export default Dashboard;
