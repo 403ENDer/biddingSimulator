@@ -16,6 +16,7 @@ export class auctionPlayerRepo {
   public static async PlayerJoin(data: any) {
     try {
       const auction = await AuctionModel.findOne({ _id: data.auctionId });
+      console.log(auction);
       const auctionPlayers = await AuctionPlayerModel.find({
         auctionId: data.auctionId,
       });
