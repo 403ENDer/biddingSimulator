@@ -9,6 +9,11 @@ import GavelIcon from "@mui/icons-material/Gavel";
 import { FaBell, FaSignOutAlt } from "react-icons/fa";
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import PeopleIcon from '@mui/icons-material/People';
+import AllInclusiveIcon from '@mui/icons-material/AllInclusive';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import Snackbar from '@mui/material/Snackbar';
+import MuiAlert from '@mui/material/Alert';
 
 
 const Dashboard = ({ username, onLogout }) => {
@@ -18,38 +23,43 @@ const Dashboard = ({ username, onLogout }) => {
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [filter, setFilter] = useState("created");
   const playerId = localStorage.getItem("playerId");
-  console.log("Player ID:", playerId); // Debugging line
-  
+  const [openSnackbar, setOpenSnackbar] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+
 
   useEffect(() => {
-    fetchUserAuctions();
-  }, []);
+    fetchAuctions();
+  }, [filter]);
 
-  const fetchUserAuctions = async () => {
+  const fetchAuctions = async () => {
     setLoading(true);
     setError(null);
-  
+
     const token = localStorage.getItem("token");
-    console.log("Token:", token); // Debugging line
-  
     if (!token) {
       setError("Missing token.");
       setLoading(false);
       return;
     }
-  
+
+    let url = "http://localhost:3333/api/auctions";
+    if (filter === "created") {
+      url += `/player?playerId=${playerId}`;
+    } else if (filter === "participated") {
+      url += `/participated?playerId=${playerId}`;
+    } else if (filter === "all") {
+      // Keep the base URL for all auctions
+    }
+
     try {
-      const res = await fetch(`http://localhost:3333/api/auctions/player?playerId=${playerId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-  
+
       if (!res.ok) throw new Error("Failed to fetch auctions");
-  
       const data = await res.json();
-      console.log("Fetched data:", data);
       setAuctions(data.auctions || []);
     } catch (err) {
       setError(err.message || "Something went wrong");
@@ -57,8 +67,6 @@ const Dashboard = ({ username, onLogout }) => {
       setLoading(false);
     }
   };
-  
-
 
   const handleUpdate = (auction) => {
     setSelectedAuction({ ...auction });
@@ -70,6 +78,21 @@ const Dashboard = ({ username, onLogout }) => {
     setOpenDeleteDialog(true);
   };
 
+  const handleCopyId = (auctionId) => {
+    navigator.clipboard.writeText(auctionId)
+      .then(() => {
+        setSnackbarMessage("Auction ID copied to clipboard!");
+        setOpenSnackbar(true);
+      })
+      .catch((error) => {
+        console.error("Failed to copy ID: ", error);
+        setSnackbarMessage("Failed to copy Auction ID.");
+        setOpenSnackbar(true);
+      });
+  };
+  
+  
+
   const confirmDelete = async () => {
     try {
       await fetch(`http://localhost:3333/api/auctions/?id=${selectedAuction._id}`, {
@@ -79,7 +102,7 @@ const Dashboard = ({ username, onLogout }) => {
         },
       });
       setOpenDeleteDialog(false);
-      fetchUserAuctions();
+      fetchAuctions();
     } catch (error) {
       console.error("Error deleting auction:", error);
     }
@@ -100,7 +123,7 @@ const Dashboard = ({ username, onLogout }) => {
         }),
       });
       setOpenUpdateDialog(false);
-      fetchUserAuctions();
+      fetchAuctions();
     } catch (error) {
       console.error("Error updating auction:", error);
     }
@@ -126,47 +149,102 @@ const Dashboard = ({ username, onLogout }) => {
         </div>
       </div>
 
-      {/* Auctions */}
+      {/* Auctions Box */}
       <div style={styles.squareBox}>
-      <h3 style={{fontSize:"30px"}}>
-          <ReceiptLongIcon style={{ verticalAlign: "middle", marginRight: "5px"}} />
-          Your Auctions
-      </h3>
+        <h3 style={{ fontSize: "30px" }}>
+          <ReceiptLongIcon style={{ verticalAlign: "middle", marginRight: "5px" }} />
+          Auctions
+        </h3>
 
-        {loading ? (
-          <CircularProgress />
-        ) : error ? (
-          <p style={{ color: "red" }}>{error}</p>
-        ) : auctions.length === 0 ? (
-          <p>No auctions created yet.</p>
-        ) : (
-          auctions.map((auction) => (
-            <div key={auction._id} style={styles.auctionCard}>
-              <div style={styles.cardHeader}>
-                <h4 style={{fontSize:"23px"}}>{auction.name}</h4>
-                <div>
-                  <IconButton onClick={() => handleUpdate(auction)}>
-                    <SystemUpdateAltIcon style={{ color: "#ff4552" }} />
-                  </IconButton>
-                  <IconButton onClick={() => handleDelete(auction)}>
-                    <DeleteIcon style={{ color: "#ff4552" }} />
-                  </IconButton>
+        {/* Filters */}
+        <div style={styles.filterBar}>
+          <Button
+            variant={filter === "created" ? "contained" : "outlined"}
+            style={{
+              backgroundColor: filter === "created" ? "#ff4552" : "#ffe2e5",
+              color: filter === "created" ? "#ffffff" : "#ff4552", // White text when selected, color when unselected
+            }}
+            onClick={() => setFilter("created")}
+            startIcon={<GavelIcon />}
+          >
+            Your Auctions
+          </Button>
+          <Button
+            variant={filter === "participated" ? "contained" : "outlined"}
+            style={{
+              backgroundColor: filter === "participated" ? "#ff4552" : "#ffe2e5",
+              color: filter === "participated" ? "#ffffff" : "#ff4552", // White text when selected, color when unselected
+            }}
+            onClick={() => setFilter("participated")}
+            startIcon={<PeopleIcon />}
+          >
+            Participated
+          </Button>
+          <Button
+            variant={filter === "all" ? "contained" : "outlined"}
+            style={{
+              backgroundColor: filter === "all" ? "#ff4552" : "#ffe2e5",
+              color: filter === "all" ? "#ffffff" : "#ff4552", // White text when selected, color when unselected
+            }}
+            onClick={() => setFilter("all")}
+            startIcon={<AllInclusiveIcon />}
+          >
+            All Auctions
+          </Button>
+        </div>
+
+        <Snackbar
+          open={openSnackbar}
+          autoHideDuration={3000}  // The Snackbar will auto-hide after 3 seconds
+          onClose={() => setOpenSnackbar(false)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} // Positioning the Snackbar at the bottom center
+        >
+          <MuiAlert onClose={() => setOpenSnackbar(false)} severity="success" sx={{ width: '100%' }}>
+            {snackbarMessage}
+          </MuiAlert>
+        </Snackbar>
+
+
+        {/* Auction List */}
+        <div style={styles.scrollArea}>
+          {loading ? (
+            <CircularProgress />
+          ) : error ? (
+            <p style={{ color: "red" }}>{error}</p>
+          ) : auctions.length === 0 ? (
+            <p>No auctions found.</p>
+          ) : (
+            auctions.map((auction) => (
+              <div key={auction._id} style={styles.auctionCard}>
+                <div style={styles.cardHeader}>
+                  <h4 style={{ fontSize: "23px" }}>{auction.name}</h4>
+                  <div>
+                    <IconButton onClick={() => handleUpdate(auction)}>
+                      <SystemUpdateAltIcon style={{ color: "#ff4552" }} />
+                    </IconButton>
+                    <IconButton onClick={() => handleDelete(auction)}>
+                      <DeleteIcon style={{ color: "#ff4552" }} />
+                    </IconButton>
+                    <IconButton onClick={() => handleCopyId(auction._id)}>
+                      <ContentCopyIcon style={{ color: "#ff4552" }} />
+                    </IconButton>
+                  </div>
+                </div>
+                <p>
+                  <EmojiEventsIcon style={{ verticalAlign: "middle", marginRight: "5px" }} />
+                  Slots: {auction.slots}
+                </p>
+                <div style={styles.itemContainer}>
+                  {auction.items?.map((item, i) => (
+                    <button key={i} style={styles.itemBtn}>
+                      {item.name} - ₹{item.price}
+                    </button>
+                  ))}
                 </div>
               </div>
-              <p>
-              <EmojiEventsIcon style={{ verticalAlign: "middle", marginRight: "5px" }} />
-              Slots: {auction.slots}
-              </p>
-              <div style={styles.itemContainer}>
-                {auction.items?.map((item, i) => (
-                  <button key={i} style={styles.itemBtn}>
-                    {item.name} - ₹{item.price}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
+        </div>
       </div>
 
       {/* Update Dialog */}
@@ -232,7 +310,7 @@ const Dashboard = ({ username, onLogout }) => {
   );
 };
 
-// Shared Styles
+// Styles
 const styles = {
   homeContainer: {
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -259,9 +337,15 @@ const styles = {
   },
   squareBox: {
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start",
-    width: "600px", height: "auto", maxHeight: "65vh", overflowY: "auto",
-    backgroundColor: "#fff", boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)",
-    borderRadius: "10px", textAlign: "center", padding: "20px", marginTop: "130px",
+    width: "600px", height: "auto", maxHeight: "65vh", backgroundColor: "#fff",
+    boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)", borderRadius: "10px",
+    textAlign: "center", padding: "20px", marginTop: "130px",
+  },
+  filterBar: {
+    display: "flex", justifyContent: "center", gap: "10px", marginBottom: "10px"
+  },
+  scrollArea: {
+    width: "100%", overflowY: "auto", maxHeight: "350px", paddingRight: "5px"
   },
   auctionCard: {
     width: "100%", backgroundColor: "#ffe2e5", borderRadius: "10px",
