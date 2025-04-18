@@ -3,8 +3,17 @@ import AuctionItemModel from "../model/auctionItemModel.js";
 import AuctionModel from "../model/auctionModel.js";
 import PlayerModel from "../model/playerModel.js";
 import { verifyToken } from "../utils/jwt.js";
+import AuctionPlayerModel from "../model/auctionPlayersModel.js";
 
 export class AuctionRepo {
+  public static async getLiveAuctions() {
+    try {
+      const aucions = await AuctionModel.find({ status: "live" });
+      return aucions;
+    } catch (err: any) {
+      throw new Error(err.message);
+    }
+  }
   public static async GetAuction(data: any) {
     const query: any = {};
     if (data.id) {
@@ -99,7 +108,9 @@ export class AuctionRepo {
 
     const auctionIds = auctions.map((a) => a._id);
 
-    const items = await AuctionItemModel.find({ auctionId: { $in: auctionIds } }).lean();
+    const items = await AuctionItemModel.find({
+      auctionId: { $in: auctionIds },
+    }).lean();
 
     const combined = auctions.map((a) => {
       const auctionItems = items
@@ -120,7 +131,9 @@ export class AuctionRepo {
   }
 
   public static async GetParticipatedAuctions(playerId: string) {
-    const participated = await AuctionPlayerModel.find({ playerId: new mongoose.Types.ObjectId(playerId) });
+    const participated = await AuctionPlayerModel.find({
+      playerId: new mongoose.Types.ObjectId(playerId),
+    });
 
     const auctionIds = participated.map((p) => p.auctionId);
 

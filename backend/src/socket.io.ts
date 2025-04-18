@@ -1,15 +1,19 @@
 import WebSocket, { WebSocketServer } from "ws";
 import { Server } from "http";
-import PlayerModel from "./model/playerModel.js";
 import AuctionPlayerModel from "./model/auctionPlayersModel.js";
 import mongoose, { Types } from "mongoose";
 import AuctionItemModel from "./model/auctionItemModel.js";
-import { messages } from "@vinejs/vine/defaults";
+import {
+  getOptimalBidRange,
+  getBiddingSuggestion,
+} from "./repositories/optimalStrategy.js";
 
 interface Player {
   id: string;
   name: string;
   purse: number;
+  strategyLimitItem1: number;
+  strategyLimitItem2: number;
   ws: WebSocket;
 }
 
@@ -52,7 +56,6 @@ export function setupWebSocket(server: Server) {
       if (data.type === "join") {
         auctionId = data.auctionId;
         playerId = data.playerId;
-
         if (!auctionRooms[auctionId]) {
           const auctionItems: any = Array.from(
             await AuctionItemModel.find({ auctionId: auctionId })
@@ -85,11 +88,13 @@ export function setupWebSocket(server: Server) {
               },
             },
           ]);
-
+          console.log(playerDetails);
           auctionRooms[auctionId].players.push({
             id: playerId,
             purse: playerDetails[0].purseAmount,
             name: playerDetails[0].playerDetails[0].name,
+            strategyLimitItem1: null,
+            strategyLimitItem2: null,
             ws,
           });
         }
@@ -100,6 +105,7 @@ export function setupWebSocket(server: Server) {
         }
       }
       let room = auctionRooms[auctionId];
+      console.log(room.players);
       if (playerId !== room.players[room.waitingForBid].id) {
         const player = room.players.find((p) => p.id === playerId);
         player?.ws.send(
@@ -128,13 +134,32 @@ export function setupWebSocket(server: Server) {
 
 function startAuction(auctionId: string) {
   const room = auctionRooms[auctionId];
+
   room.status = "live";
-  room.players.forEach((player) => {
+
+  const bid_increment = 1;
+
+  room.players.forEach(async (player: Player) => {
+    const opponent = room.players.find((p) => p.id !== player.id);
+    if (!opponent) {
+      player.strategyLimitItem1 = 0;
+      player.strategyLimitItem2 = 0;
+    } else {
+      const { max_bid_item_1, max_bid_item_2 } = getOptimalBidRange(
+        room.items[0].price,
+        room.items[1].price,
+        player.purse,
+        opponent.purse,
+        bid_increment
+      );
+      player.strategyLimitItem1 = max_bid_item_1;
+      player.strategyLimitItem2 = max_bid_item_2;
+    }
+
     player.ws.send(
       JSON.stringify({
         message: "Auction started",
-        optimalStrategy:
-          "Your strategy depends on item value and opponent's purse.",
+        optimalStrategy: `Max limit for item-1: ₹${player.strategyLimitItem1} and Max limit for item-2: ₹${player.strategyLimitItem2}`,
       })
     );
   });
@@ -150,7 +175,7 @@ function startBidding(auctionId: string) {
   );
 }
 
-function handleBid(auctionId: string, playerId: string, amount: number) {
+async function handleBid(auctionId: string, playerId: string, amount: number) {
   const room = auctionRooms[auctionId];
 
   const player = room.players.find((p) => p.id === playerId);
@@ -179,11 +204,25 @@ function handleBid(auctionId: string, playerId: string, amount: number) {
   room.highestBidder = player;
   room.waitingForBid = (room.waitingForBid + 1) % 2;
 
-  room.players.forEach((p) =>
-    p.ws.send(
-      JSON.stringify({ message: `Player ${player.name} bid ${amount}` })
-    )
-  );
+  for (const p of room.players) {
+    const opponent = room.players.find((pl) => pl.id !== p.id);
+    const item1WonByPlayer = room.items[0].winBy?.toString() === p.id;
+    const suggestion = getBiddingSuggestion({
+      currentItem: room.currentItem.id === room.items[0].id ? 1 : 2,
+      currentBid: room.highestBid,
+      strategyLimit:
+        room.currentItem.id === room.items[0].id
+          ? p.strategyLimitItem1
+          : p.strategyLimitItem2,
+      playerPurse: p.purse,
+      opponentPurse: opponent ? opponent.purse : 0,
+      item1WonByPlayer,
+      item1Price: room.items[0].price,
+      item1Value: room.items[0].price,
+      item2Value: room.items[1].price,
+    });
+    p.ws.send(JSON.stringify({ message: suggestion }));
+  }
 
   startBidding(auctionId);
 }
@@ -255,9 +294,32 @@ function handleLeave(auctionId: string, playerId: string) {
     }
   }
 
-  delete auctionRooms[auctionId];
+  endAuction(auctionId);
 }
 
+async function endAuction(auctionId: any) {
+  const room = auctionRooms[auctionId];
+  const playerGains = await Promise.all(
+    room.players.map(async (player) => {
+      const completedItems = await AuctionItemModel.find({ winBy: player.id });
+      const totalGain = completedItems.reduce(
+        (acc: any, item: any) => acc + item.price,
+        0
+      );
+      return { id: player.id, name: player.name, gain: totalGain };
+    })
+  );
+
+  notifyAll(
+    auctionId,
+    JSON.stringify({
+      message: "Auction ended.",
+      gains: playerGains,
+    })
+  );
+
+  delete auctionRooms[auctionId];
+}
 function notifyAll(auctionId: string, message: string) {
   const room = auctionRooms[auctionId];
   room.players.forEach((p) => p.ws.send(JSON.stringify({ message })));
