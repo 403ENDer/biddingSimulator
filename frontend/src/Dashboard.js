@@ -38,6 +38,7 @@ const Dashboard = ({ username, onLogout }) => {
     setError(null);
 
     const token = localStorage.getItem("token");
+    // console.log("Token:", token); // Debugging line to check the token value
     if (!token) {
       setError("Missing token.");
       setLoading(false);
@@ -110,25 +111,34 @@ const Dashboard = ({ username, onLogout }) => {
 
   const submitUpdate = async () => {
     try {
-      await fetch(`http://localhost:3333/api/auctions/?id=${selectedAuction._id}`, {
+      const response = await fetch(`http://localhost:3333/api/auctions/?id=${selectedAuction._id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
         body: JSON.stringify({
+          id: selectedAuction._id,  
+          status: selectedAuction.status,
           name: selectedAuction.name,
           slots: selectedAuction.slots,
-          items: selectedAuction.items
+          items: selectedAuction.items,
         }),
       });
-      setOpenUpdateDialog(false);
-      fetchAuctions();
+  
+      if (response.ok) {
+        setOpenUpdateDialog(false);
+        fetchAuctions();  // Refresh the auction list
+      } else {
+        const errorData = await response.json();
+        console.error("Error response:", errorData);  // Log detailed error response
+      }
     } catch (error) {
       console.error("Error updating auction:", error);
     }
   };
-
+  
+  
   const handleItemChange = (index, field, value) => {
     const updatedItems = [...selectedAuction.items];
     updatedItems[index][field] = value;
@@ -269,6 +279,15 @@ const Dashboard = ({ username, onLogout }) => {
               setSelectedAuction({ ...selectedAuction, slots: Number(e.target.value) })
             }
             margin="dense"
+          />
+          <TextField
+              fullWidth
+              label="Status"  // Add status field
+              value={selectedAuction?.status || ""}  // Ensure this value is set from selectedAuction
+              onChange={(e) =>
+                setSelectedAuction({ ...selectedAuction, status: e.target.value })  // Update status
+              }
+              margin="dense"
           />
           {selectedAuction?.items?.map((item, idx) => (
             <div key={idx} style={{ marginBottom: 10 }}>
