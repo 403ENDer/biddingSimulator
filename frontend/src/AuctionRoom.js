@@ -2,10 +2,14 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import GavelIcon from "@mui/icons-material/Gavel";
 import { FaBell, FaSignOutAlt } from "react-icons/fa";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Snackbar from "@mui/material/Snackbar";
 import MuiAlert from "@mui/material/Alert";
-
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import Button from "@mui/material/Button";
 
 const AuctionRoom = ({ username, onLogout }) => {
   const { auctionId } = useParams();
@@ -25,10 +29,13 @@ const AuctionRoom = ({ username, onLogout }) => {
   const [snackbarMsg, setSnackbarMsg] = useState("");
   const [snackbarSeverity, setSnackbarSeverity] = useState("info");
   const [lastTextMessage, setLastTextMessage] = useState("");
- 
+  const [openConfirmDialog, setOpenConfirmDialog] = useState(false); // State for dialog
+  const [actionType, setActionType] = useState(""); 
+  const navigate = useNavigate();
 
-  // Fetch auction details
+
   useEffect(() => {
+    // Fetch auction details
     const fetchAuction = async () => {
       try {
         const res = await fetch(`http://localhost:3333/api/auctions?id=${auctionId}`, {
@@ -45,8 +52,8 @@ const AuctionRoom = ({ username, onLogout }) => {
     fetchAuction();
   }, [auctionId]);
 
-  // WebSocket connection and handling auction updates
   useEffect(() => {
+    // WebSocket connection handling
     const ws = new WebSocket("ws://localhost:3333");
 
     ws.onopen = () => {
@@ -65,120 +72,87 @@ const AuctionRoom = ({ username, onLogout }) => {
       const msg = JSON.parse(event.data);
       console.log("📩 WebSocket message received:", msg);
 
-      // Player joined message
+      // Player joined message handling
       if (msg.type === "playerJoined") {
-        console.log("Player Info:", msg.playerInfo);
-        console.log("Opponent Info:", msg.opponentInfo);
+        setSnackbarMsg("Player joined the auction successfully!");
+        setSnackbarSeverity("success");
+        setSnackbarOpen(true);
 
-        // Handle Player Info
+        // Handle specific player and opponent info
         if (msg.playerInfo && msg.playerInfo.id === localStorage.getItem("playerId")) {
-          setPlayerInfo({
-            id: msg.playerInfo.id,
-            name: msg.playerInfo.name,
-            purse: msg.playerInfo.purse,
-            currentBid: msg.playerInfo.currentBid || 0,
-          });
+          setPlayerInfo(msg.playerInfo);
         }
 
-        // Handle Opponent Info (Only if the opponent has joined)
         if (msg.opponentInfo && msg.opponentInfo.id !== localStorage.getItem("playerId")) {
-          setOpponentInfo({
-            id: msg.opponentInfo.id,
-            name: msg.opponentInfo.name,
-            purse: msg.opponentInfo.purse,
-            currentBid: msg.opponentInfo.currentBid || 0,
-          });
+          setOpponentInfo(msg.opponentInfo);
         }
 
-        // Both players have joined, stop waiting for opponent
         if (msg.playerInfo && msg.opponentInfo) {
           setWaitingForOpponent(false);
         }
       }
 
-      // Handle the turn updates
+      // Turn update
       if (msg.type === "turn") {
         const isPlayerTurn = msg.currentTurn === localStorage.getItem("playerId");
         setCurrentTurn(isPlayerTurn);
+        setSnackbarMsg(`It's ${isPlayerTurn ? "your" : "opponent's"} turn.`);
+        setSnackbarSeverity("info");
+        setSnackbarOpen(true);
         setMessages((prev) => [...prev, msg.message]);
       }
 
-      // Handle player updates (bids, purse, current bid)
-      if (msg.type === "playerUpdate") {
+      // Handle strategy and optimal strategy messages
+      if (msg.type === "strategy" || msg.type === "optimalStrategy") {
+        setSnackbarMsg(msg.message);
+        setSnackbarSeverity("info");
+        setSnackbarOpen(true);
+        setMessages((prev) => [...prev, msg.message]);
+      }
+
+      // Handle general messages and bids
+      if (msg.type === "bid" || msg.type === "playerUpdate") {
         if (msg.playerId === localStorage.getItem("playerId")) {
-          setPlayerInfo((prevState) => ({
-            ...prevState,
-            name: msg.name,
-            purse: msg.purse,
-            currentBid: msg.currentBid,
-          }));
+          setSnackbarMsg(`${msg.name} has updated their bid.`);
+          setSnackbarSeverity("info");
+          setSnackbarOpen(true);
+          setPlayerInfo(msg);
         } else {
-          setOpponentInfo((prevState) => ({
-            ...prevState,
-            name: msg.name,
-            purse: msg.purse,
-            currentBid: msg.currentBid,
-          }));
+          setOpponentInfo(msg);
         }
       }
 
-      // Handle the bid updates
-      if (msg.type === "bid") {
-        if (msg.playerId === localStorage.getItem("playerId")) {
-          setPlayerInfo((prevState) => ({
-            ...prevState,
-            currentBid: msg.amount,
-            purse: prevState.purse - msg.amount, // Update purse after placing a bid
-          }));
-        } else {
-          setOpponentInfo((prevState) => ({
-            ...prevState,
-            currentBid: msg.amount,
-            purse: prevState.purse - msg.amount, // Update opponent's purse after their bid
-          }));
-        }
-      }
-      
-
-      // Handle strategy updates (optional)
-      if (msg.type === "strategy") {
-        console.log("Optimal Strategy:", msg.optimalStrategy);
-        setMessages((prevMessages) => [...prevMessages, msg.optimalStrategy]);
-      }
-
+      // Handle other messages
       if (msg.message && !msg.type) {
         try {
-          const parsed = JSON.parse(msg.message); // Try to parse JSON
+          const parsed = JSON.parse(msg.message);
 
           if (Array.isArray(parsed)) {
-
             if (lastTextMessage.toLowerCase().includes("player wins")) {
               setWinnerMessage(`⚠️ ${lastTextMessage}`);
               setWinnerData(parsed);
               setShowWinnerDialog(true);
-      
               setTimeout(() => {
                 setShowWinnerDialog(false);
               }, 10000);
-      
               setLastTextMessage("");
+
+              navigate(`/auction-summary`, { state: { auctionSummary: auctionData, winnerData: parsed } });
             }
-      
           } else {
-            // It’s just a JSON object or other structure
             setMessages((prev) => [...prev, `⚠️ ${msg.message}`]);
+            setSnackbarMsg(`⚠️ ${msg.message}`);
+            setSnackbarSeverity("warning");
+            setSnackbarOpen(true);
           }
-      
+
         } catch (e) {
-          if (msg.message.toLowerCase().includes("wins item")) {
-            setLastTextMessage(msg.message); // Save temporarily, wait for next JSON message
-          } else {
-            setMessages((prev) => [...prev, `⚠️ ${msg.message}`]);
-          }
+          setMessages((prev) => [...prev, `⚠️ ${msg.message}`]);
+          setSnackbarMsg(`⚠️ ${msg.message}`);
+          setSnackbarSeverity("warning");
+          setSnackbarOpen(true);
         }
       }
-      
-      
     };
 
     ws.onerror = (error) => {
@@ -202,18 +176,10 @@ const AuctionRoom = ({ username, onLogout }) => {
   const Alert = React.forwardRef(function Alert(props, ref) {
     return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
   });
-  
 
-  // Handling the bid
   const handleBid = () => {
     if (socket && bidAmount) {
       const bid = parseInt(bidAmount);
-  
-      // Log current purse value and the bid amount
-      console.log("Player purse:", playerInfo.purse);  // This should be the correct player's purse
-      console.log("Bid amount:", bid);
-  
-      // Check if the player has enough funds using playerInfo.purse
       if (playerInfo.purse >= bid) {
         socket.send(
           JSON.stringify({
@@ -223,55 +189,51 @@ const AuctionRoom = ({ username, onLogout }) => {
             auctionId,
           })
         );
-  
-        // Deduct the bid amount from the player's purse
         setPlayerInfo((prevState) => ({
           ...prevState,
           purse: prevState.purse - bid,
           currentBid: bid,
         }));
         setBidAmount("");
-  
-        // Switch turns
-        socket.send(
-          JSON.stringify({
-            type: "turn", // Notify server that turn has been switched
-            auctionId,
-            currentTurn: opponentInfo.id, // The opponent will now play
-          })
-        );
       } else {
         alert("You do not have enough funds to place this bid.");
       }
     }
   };
-  
-  
 
-  // Handling quitting
   const handleQuit = () => {
-    if (socket) {
-      socket.send(
-        JSON.stringify({
-          type: "quit",
-          auctionId,
-          playerId: localStorage.getItem("playerId")
-        })
-      );
-    }
+    setActionType("quit");
+    setOpenConfirmDialog(true);
   };
 
-  // Handling leaving
   const handleLeave = () => {
-    if (socket) {
-      socket.send(
-        JSON.stringify({
-          type: "leave",
-          auctionId,
-          playerId: localStorage.getItem("playerId")
-        })
-      );
+    setActionType("leave");
+    setOpenConfirmDialog(true);
+  };
+
+  const handleConfirmAction = () => {
+    if (actionType === "quit") {
+      if (socket) {
+        socket.send(
+          JSON.stringify({
+            type: "quit",
+            auctionId,
+            playerId: localStorage.getItem("playerId"),
+          })
+        );
+      }
+    } else if (actionType === "leave") {
+      if (socket) {
+        socket.send(
+          JSON.stringify({
+            type: "leave",
+            auctionId,
+            playerId: localStorage.getItem("playerId"),
+          })
+        );
+      }
     }
+    setOpenConfirmDialog(false);
   };
 
   const highestBid = Math.max(playerInfo?.currentBid || 0, opponentInfo?.currentBid || 0);
@@ -364,7 +326,6 @@ const AuctionRoom = ({ username, onLogout }) => {
           </Alert>
         </Snackbar>
 
-
         {/* RIGHT SECTION */}
         <div style={styles.rightPane}>
           <h3 style={{ textAlign: "center", marginBottom: "10px" }}>Auction Logs</h3>
@@ -375,6 +336,22 @@ const AuctionRoom = ({ username, onLogout }) => {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <Dialog
+        open={openConfirmDialog}
+        onClose={() => setOpenConfirmDialog(false)}
+      >
+        <DialogTitle>Are you sure you want to {actionType === 'quit' ? 'quit' : 'leave'}?</DialogTitle>
+        <DialogActions>
+          <Button onClick={() => setOpenConfirmDialog(false)} color="primary">
+            Cancel
+          </Button>
+          <Button onClick={handleConfirmAction} color="primary">
+            Yes
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };

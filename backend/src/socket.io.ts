@@ -351,15 +351,22 @@ function handleQuit(auctionId: string, playerId: string) {
 
 async function handleGain(room: any) {
   const completedItem = await AuctionItemModel.findById(room.currentItem.id);
-  completedItem.winBy = room.highestBidder.id;
-  await completedItem.save();
+  
+  if (completedItem) {
+    completedItem.winBy = room.highestBidder.id;
+    await completedItem.save();
+  }
 
   const playerGain = await AuctionPlayerModel.findOne({
     playerId: room.highestBidder.id,
   });
-  playerGain.gain += completedItem.price - room.highestBid;
-  await playerGain.save();
+
+  if (playerGain) {
+    playerGain.gain += completedItem.price - room.highestBid;
+    await playerGain.save();  
+  }
 }
+
 
 function handleLeave(auctionId: string, playerId: string) {
   const room = auctionRooms[auctionId];
