@@ -7,6 +7,7 @@ import {
   getOptimalBidRange,
   getBiddingSuggestion,
 } from "./repositories/optimalStrategy.js";
+import AuctionModel from "./model/auctionModel.js";
 
 interface Player {
   id: string;
@@ -317,6 +318,8 @@ async function endAuction(auctionId: any) {
       gains: playerGains,
     })
   );
+
+  await AuctionModel.findByIdAndUpdate(auctionId, { status: "completed" });
 
   delete auctionRooms[auctionId];
 }

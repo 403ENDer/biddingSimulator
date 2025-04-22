@@ -11,7 +11,6 @@ export const GetAuctionByIdValidator = vine.compile(
   })
 );
 
-
 export const CreateAuctionValidator = vine.compile(
   vine.object({
     name: vine.string(),
@@ -27,8 +26,18 @@ export const CreateAuctionValidator = vine.compile(
 
 export const UpdateAuctionValidator = vine.compile(
   vine.object({
-    id: vine.string(),
-    status: vine.string(),
+    status: vine.string().optional(),
+    name: vine.string().optional(),
+    slots: vine.number().optional(),
+    items: vine
+      .array(
+        vine.object({
+          id: vine.string(),
+          name: vine.string().minLength(1).optional(),
+          price: vine.number().optional(),
+        })
+      )
+      .optional(),
   })
 );
 

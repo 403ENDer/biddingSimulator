@@ -10,6 +10,7 @@ import {
 import { verifyToken } from "../utils/jwt.js";
 import { Request, Response } from "express";
 import PlayerModel from "../model/playerModel.js";
+import AuctionItemModel from "../model/auctionItemModel.js";
 
 export class AuctionController {
   public static GetPlayerCreatedAuctions = async (
@@ -99,7 +100,9 @@ export class AuctionController {
 
   public static async UpdateAuction(req: any, res: any) {
     try {
-      const data = await UpdateAuctionValidator.validate(req.query);
+      const result = await UpdateAuctionValidator.validate(req.body);
+      const data = { id: req.query.id, ...result };
+
       const auction = await AuctionRepo.UpdateAuction(data);
       res.status(200).send(auction);
     } catch (err) {

@@ -82,6 +82,21 @@ export class AuctionRepo {
   }
 
   public static async UpdateAuction(data: any) {
+    if (data.items) {
+      data.items.forEach(async (item: any) => {
+        const updateData: Record<string, any> = {};
+
+        if (item.name !== undefined) {
+          updateData.name = item.name;
+        }
+
+        if (item.price !== undefined) {
+          updateData.price = item.price;
+        }
+
+        await AuctionItemModel.findByIdAndUpdate(item.id, updateData);
+      });
+    }
     const auction = await AuctionModel.findByIdAndUpdate(data.id, data, {
       new: true,
     });
