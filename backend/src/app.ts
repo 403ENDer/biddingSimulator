@@ -19,7 +19,7 @@ dotenv.config();
 
 app.use(cors({
   origin: "http://localhost:3000",  // Allow requests from your frontend's origin
-  methods: ["GET", "POST", "PUT", "DELETE"],  // Allow specific HTTP methods
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],  // Allow specific HTTP methods
   credentials: true,  // Allow cookies or authentication headers if needed
 }));
 

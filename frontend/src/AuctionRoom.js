@@ -1,19 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react"; 
 import { useParams } from "react-router-dom";
 import GavelIcon from "@mui/icons-material/Gavel";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import InfoIcon from '@mui/icons-material/Info';
 import { FaBell, FaSignOutAlt } from "react-icons/fa";
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  IconButton,
-  Typography
-} from "@mui/material";
-import CloseIcon from '@mui/icons-material/Close';
-import { Box } from "@mui/material";
-
+import { useLocation, useNavigate } from "react-router-dom";
+import Snackbar from "@mui/material/Snackbar";
+import MuiAlert from "@mui/material/Alert";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import Button from "@mui/material/Button";
 
 const AuctionRoom = ({ username, onLogout }) => {
   const { auctionId } = useParams();
@@ -21,21 +17,25 @@ const AuctionRoom = ({ username, onLogout }) => {
   const [socket, setSocket] = useState(null);
   const [messages, setMessages] = useState([]);
   const [currentTurn, setCurrentTurn] = useState(false);
+  const [waitingForOpponent, setWaitingForOpponent] = useState(true);
   const [bidAmount, setBidAmount] = useState("");
-  const [infoOpen, setInfoOpen] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState("Connecting...");
+  const [playerInfo, setPlayerInfo] = useState({});
+  const [opponentInfo, setOpponentInfo] = useState({});
+  const location = useLocation();
+  const { purseAmount } = location.state || {}; 
+  const [playerPurse, setPlayerPurse] = useState(purseAmount || 0);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMsg, setSnackbarMsg] = useState("");
+  const [snackbarSeverity, setSnackbarSeverity] = useState("info");
+  const [lastTextMessage, setLastTextMessage] = useState("");
+  const [openConfirmDialog, setOpenConfirmDialog] = useState(false); // State for dialog
+  const [actionType, setActionType] = useState(""); 
+  const navigate = useNavigate();
 
-  const currentPlayer = {
-    name: username,
-    purse: 1000,
-    currentBid: 200
-  };
-  const opponentPlayer = {
-    name: "Opponent",
-    purse: 1000,
-    currentBid: 250
-  };
 
   useEffect(() => {
+    // Fetch auction details
     const fetchAuction = async () => {
       try {
         const res = await fetch(`http://localhost:3333/api/auctions?id=${auctionId}`, {
@@ -49,73 +49,202 @@ const AuctionRoom = ({ username, onLogout }) => {
         console.error("Failed to fetch auction details", err);
       }
     };
-
     fetchAuction();
   }, [auctionId]);
 
   useEffect(() => {
+    // WebSocket connection handling
     const ws = new WebSocket("ws://localhost:3333");
-    setSocket(ws);
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({
-        type: "join",
-        auctionId,
-        playerId: localStorage.getItem("playerId")
-      }));
+      setConnectionStatus("Connected");
+      console.log("✅ WebSocket connected");
+      ws.send(
+        JSON.stringify({
+          type: "join",
+          auctionId,
+          playerId: localStorage.getItem("playerId"),
+        })
+      );
     };
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
+      console.log("📩 WebSocket message received:", msg);
 
-      if (msg.message) {
-        setMessages((prev) => [...prev, msg.message]);
-        if (msg.message.startsWith("Your turn to bid")) {
-          setCurrentTurn(true);
-        } else {
-          setCurrentTurn(false);
+      // Player joined message handling
+      if (msg.type === "playerJoined") {
+        setSnackbarMsg("Player joined the auction successfully!");
+        setSnackbarSeverity("success");
+        setSnackbarOpen(true);
+
+        // Handle specific player and opponent info
+        if (msg.playerInfo && msg.playerInfo.id === localStorage.getItem("playerId")) {
+          setPlayerInfo(msg.playerInfo);
+        }
+
+        if (msg.opponentInfo && msg.opponentInfo.id !== localStorage.getItem("playerId")) {
+          setOpponentInfo(msg.opponentInfo);
+        }
+
+        if (msg.playerInfo && msg.opponentInfo) {
+          setWaitingForOpponent(false);
         }
       }
 
-      if (msg.optimalStrategy) {
-        setMessages((prev) => [...prev, `💡 Strategy Tip: ${msg.optimalStrategy}`]);
+      // Turn update
+      if (msg.type === "turn") {
+        const isPlayerTurn = msg.currentTurn === localStorage.getItem("playerId");
+        setCurrentTurn(isPlayerTurn);
+        setSnackbarMsg(`It's ${isPlayerTurn ? "your" : "opponent's"} turn.`);
+        setSnackbarSeverity("info");
+        setSnackbarOpen(true);
+        setMessages((prev) => [...prev, msg.message]);
+      }
+
+      // Handle strategy and optimal strategy messages
+      if (msg.type === "strategy" || msg.type === "optimalStrategy") {
+        setSnackbarMsg(msg.message);
+        setSnackbarSeverity("info");
+        setSnackbarOpen(true);
+        setMessages((prev) => [...prev, msg.message]);
+      }
+
+      // Handle general messages and bids
+      if (msg.type === "bid" || msg.type === "playerUpdate") {
+        if (msg.playerId === localStorage.getItem("playerId")) {
+          setSnackbarMsg(`${msg.name} has updated their bid.`);
+          setSnackbarSeverity("info");
+          setSnackbarOpen(true);
+          setPlayerInfo(msg);
+        } else {
+          setOpponentInfo(msg);
+        }
+      }
+
+      // Handle other messages
+      if (msg.message && !msg.type) {
+        try {
+          const parsed = JSON.parse(msg.message);
+
+          if (Array.isArray(parsed)) {
+            if (lastTextMessage.toLowerCase().includes("player wins")) {
+              setWinnerMessage(`⚠️ ${lastTextMessage}`);
+              setWinnerData(parsed);
+              setShowWinnerDialog(true);
+              setTimeout(() => {
+                setShowWinnerDialog(false);
+              }, 10000);
+              setLastTextMessage("");
+
+              navigate(`/auction-summary`, { state: { auctionSummary: auctionData, winnerData: parsed } });
+            }
+          } else {
+            setMessages((prev) => [...prev, `⚠️ ${msg.message}`]);
+            setSnackbarMsg(`⚠️ ${msg.message}`);
+            setSnackbarSeverity("warning");
+            setSnackbarOpen(true);
+          }
+
+        } catch (e) {
+          setMessages((prev) => [...prev, `⚠️ ${msg.message}`]);
+          setSnackbarMsg(`⚠️ ${msg.message}`);
+          setSnackbarSeverity("warning");
+          setSnackbarOpen(true);
+        }
       }
     };
 
-    ws.onclose = () => {
-      console.log("WebSocket closed");
+    ws.onerror = (error) => {
+      setConnectionStatus("Error in connection");
+      console.error("WebSocket error:", error);
     };
 
-    return () => ws.close();
+    ws.onclose = () => {
+      setConnectionStatus("Connection closed");
+    };
+
+    setSocket(ws);
+
+    return () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
   }, [auctionId]);
+
+  const Alert = React.forwardRef(function Alert(props, ref) {
+    return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
+  });
 
   const handleBid = () => {
     if (socket && bidAmount) {
-      socket.send(JSON.stringify({
-        type: "bid",
-        amount: parseInt(bidAmount),
-        playerId: localStorage.getItem("playerId"),
-        auctionId,
-      }));
-      setBidAmount("");
+      const bid = parseInt(bidAmount);
+      if (playerInfo.purse >= bid) {
+        socket.send(
+          JSON.stringify({
+            type: "bid",
+            amount: bid,
+            playerId: localStorage.getItem("playerId"),
+            auctionId,
+          })
+        );
+        setPlayerInfo((prevState) => ({
+          ...prevState,
+          purse: prevState.purse - bid,
+          currentBid: bid,
+        }));
+        setBidAmount("");
+      } else {
+        alert("You do not have enough funds to place this bid.");
+      }
     }
   };
 
   const handleQuit = () => {
-    socket.send(JSON.stringify({ type: "quit", auctionId, playerId: localStorage.getItem("playerId") }));
+    setActionType("quit");
+    setOpenConfirmDialog(true);
   };
 
   const handleLeave = () => {
-    socket.send(JSON.stringify({ type: "leave", auctionId, playerId: localStorage.getItem("playerId") }));
+    setActionType("leave");
+    setOpenConfirmDialog(true);
   };
 
-  const highestBid = Math.max(currentPlayer.currentBid, opponentPlayer.currentBid);
+  const handleConfirmAction = () => {
+    if (actionType === "quit") {
+      if (socket) {
+        socket.send(
+          JSON.stringify({
+            type: "quit",
+            auctionId,
+            playerId: localStorage.getItem("playerId"),
+          })
+        );
+      }
+    } else if (actionType === "leave") {
+      if (socket) {
+        socket.send(
+          JSON.stringify({
+            type: "leave",
+            auctionId,
+            playerId: localStorage.getItem("playerId"),
+          })
+        );
+      }
+    }
+    setOpenConfirmDialog(false);
+  };
+
+  const highestBid = Math.max(playerInfo?.currentBid || 0, opponentInfo?.currentBid || 0);
 
   return (
     <div style={styles.container}>
+      {/* Header */}
       <div style={styles.headerBox}>
         <h2 style={styles.logo}>
-          <GavelIcon style={{ fontSize: "30px", marginRight: "10px" }} />Biddr
+          <GavelIcon style={{ fontSize: "30px", marginRight: "10px" }} />
+          Biddr
         </h2>
         <div style={styles.headerRight}>
           <span style={styles.welcomeText}>Welcome, {username}</span>
@@ -124,143 +253,105 @@ const AuctionRoom = ({ username, onLogout }) => {
         </div>
       </div>
 
-      <div style={styles.roomBox}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+      {/* Main Auction Page */}
+      <div style={styles.mainSplit}>
+        {/* LEFT SECTION */}
+        <div style={styles.leftPane}>
           <h2 style={{ color: "#ff4552", margin: 0 }}>Auction Room</h2>
-          <IconButton onClick={() => setInfoOpen(true)}>
-            <InfoOutlinedIcon style={{ color: "#ff4552" }} />
-          </IconButton>
-        </div>
-        <p><strong>ID:</strong> {auctionId}</p>
+          <p><strong>ID:</strong> {auctionId}</p>
 
-        {auctionData ? (
-          <div>
-            <h3>{auctionData.name}</h3>
-            <p><strong>💰 Highest Bid:</strong> {highestBid}</p>
-          </div>
-        ) : (
-          <p>Loading auction details...</p>
-        )}
-
-        <div style={styles.battleSection}>
-          <div style={styles.playerCard}>
-            <h4>{currentPlayer.name}</h4>
-            <p>Purse: {currentPlayer.purse}</p>
-            <p>Remaining: {currentPlayer.purse - currentPlayer.currentBid}</p>
-            <p>Current Bid: {currentPlayer.currentBid}</p>
-          </div>
-
-          <div style={styles.battleIcon}>
-            <GavelIcon style={{ fontSize: "40px", color: "#ff4552" }} />
-            <p style={{ fontWeight: "bold" }}>Bidding War</p>
-          </div>
-
-          <div style={styles.playerCard}>
-            <h4>{opponentPlayer.name}</h4>
-            <p>Purse: {opponentPlayer.purse}</p>
-            <p>Remaining: {opponentPlayer.purse - opponentPlayer.currentBid}</p>
-            <p>Current Bid: {opponentPlayer.currentBid}</p>
-          </div>
-        </div>
-
-        <div style={{ marginTop: "20px" }}>
-          {currentTurn ? (
-            <div>
-              <input
-                type="number"
-                placeholder="Enter your bid"
-                value={bidAmount}
-                onChange={(e) => setBidAmount(e.target.value)}
-              />
-              <button onClick={handleBid}>Place Bid</button>
+          {auctionData ? (
+            <div style={{ alignItems: "center", textAlign: "center" }}>
+              <h3>{auctionData.name}</h3>
+              <p><strong>💰 Highest Bid:</strong> {highestBid}</p>
             </div>
           ) : (
-            <p>Waiting for opponent's move...</p>
+            <p>Loading auction details...</p>
           )}
+
+          <div style={styles.battleSection}>
+            <div style={styles.playerCard}>
+              <h4>{playerInfo?.name || username}</h4>
+              <p>Purse: ₹{playerInfo?.purse || 0}</p>
+              <p>Remaining: ₹{(playerInfo?.purse || 0) - (playerInfo?.currentBid || 0)}</p>
+              <p>Current Bid: ₹{playerInfo?.currentBid || 0}</p>
+            </div>
+
+            <div style={styles.battleIcon}>
+              <GavelIcon style={{ fontSize: "40px", color: "#ff4552" }} />
+              <p style={{ fontWeight: "bold" }}>Bidding War</p>
+            </div>
+
+            <div style={styles.playerCard}>
+              <h4>{opponentInfo?.name || "Opponent"}</h4>
+              <p>Purse: ₹{opponentInfo?.purse || 0}</p>
+              <p>Remaining: ₹{(opponentInfo?.purse || 0) - (opponentInfo?.currentBid || 0)}</p>
+              <p>Current Bid: ₹{opponentInfo?.currentBid || 0}</p>
+            </div>
+          </div>
+
+          {waitingForOpponent ? (
+            <p style={{ marginTop: "20px", textAlign: "center" }}>Waiting for another player...</p>
+          ) : currentTurn ? (
+            <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "20px" }}>
+              <input
+                type="number"
+                value={bidAmount}
+                onChange={(e) => setBidAmount(e.target.value)}
+                style={{ padding: "10px", fontSize: "16px", width: "150px" }}
+                placeholder="Enter your bid"
+              />
+              <button onClick={handleBid} style={styles.actionButton}>
+                Place Bid
+              </button>
+            </div>
+          ) : (
+            <p style={{ marginTop: "20px", textAlign: "center" }}>Waiting for opponent's move...</p>
+          )}
+
+          <div style={{ marginTop: "20px", display: "flex", gap: "10px", justifyContent: "center" }}>
+            <button onClick={handleQuit} style={styles.actionButton}>Quit</button>
+            <button onClick={handleLeave} style={styles.actionButton}>Leave</button>
+          </div>
         </div>
 
-        <div style={{
-          maxHeight: "150px",
-          overflowY: "auto",
-          marginTop: "20px",
-          background: "#f1f1f1",
-          padding: "10px",
-          borderRadius: "8px"
-        }}>
-          {messages.map((msg, idx) => (
-            <p key={idx} style={{ textAlign: "left", margin: 0 }}>{msg}</p>
-          ))}
-        </div>
+        <Snackbar
+          open={snackbarOpen}
+          autoHideDuration={4000}
+          onClose={() => setSnackbarOpen(false)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        >
+          <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarSeverity} sx={{ width: "100%" }}>
+            {snackbarMsg}
+          </Alert>
+        </Snackbar>
 
-        <div style={{
-          marginTop: "20px",
-          display: "flex",
-          gap: "10px",
-          justifyContent: "center"
-        }}>
-          <button onClick={handleQuit} style={styles.actionButton}>Quit</button>
-          <button onClick={handleLeave} style={styles.actionButton}>Leave</button>
+        {/* RIGHT SECTION */}
+        <div style={styles.rightPane}>
+          <h3 style={{ textAlign: "center", marginBottom: "10px" }}>Auction Logs</h3>
+          <div style={styles.logBox}>
+            {messages.map((msg, idx) => (
+              <p key={idx} style={{ margin: "4px 0" }}>{msg}</p>
+            ))}
+          </div>
         </div>
       </div>
 
+      {/* Confirmation Dialog */}
       <Dialog
-  open={infoOpen}
-  onClose={() => setInfoOpen(false)}
-  PaperProps={{
-    sx: {
-      width: '400px',           // custom width
-      borderRadius: 3,
-    },
-  }}
->
-  <DialogTitle
-    sx={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      bgcolor: '#ff4552',
-      color: 'white',
-      fontFamily: 'Autowide',    // using your imported font
-      fontWeight: 'bold',
-      px: 3,
-      py: 2,
-    }}
-  >
-    <Box display="flex" alignItems="center" gap={1}>
-      <InfoIcon />
-      Auction Info
-    </Box>
-    <IconButton onClick={() => setInfoOpen(false)} sx={{ color: 'white' }}>
-      <CloseIcon />
-    </IconButton>
-  </DialogTitle>
-
-  <DialogContent
-    sx={{
-      bgcolor: '#f5f5f5',
-      py: 3,
-      fontFamily: 'Autowide',
-      textAlign: 'center',
-    }}
-  >
-    {auctionData ? (
-      <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
-        <Typography variant="body1">
-          <strong>Slots:</strong> {auctionData.slots}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Total Items:</strong> {auctionData.items.length}
-        </Typography>
-        <Typography variant="body1">
-          <strong>Current Item:</strong> {auctionData.items[0]?.name || 'N/A'}
-        </Typography>
-      </Box>
-    ) : (
-      <Typography>Loading...</Typography>
-    )}
-  </DialogContent>
-</Dialog>
-
+        open={openConfirmDialog}
+        onClose={() => setOpenConfirmDialog(false)}
+      >
+        <DialogTitle>Are you sure you want to {actionType === 'quit' ? 'quit' : 'leave'}?</DialogTitle>
+        <DialogActions>
+          <Button onClick={() => setOpenConfirmDialog(false)} color="primary">
+            Cancel
+          </Button>
+          <Button onClick={handleConfirmAction} color="primary">
+            Yes
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };
@@ -307,41 +398,69 @@ const styles = {
     fontSize: "20px",
     cursor: "pointer"
   },
-  roomBox: {
-    marginTop: "150px",
+  mainSplit: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    gap: "30px",
+    marginTop: "130px",
+    width: "90%"
+  },
+  leftPane: {
     backgroundColor: "#fff",
     padding: "30px",
     borderRadius: "10px",
     boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)",
-    textAlign: "center",
-    width: "700px"
+    width: "800px",
+    minWidth: "600px",
+    maxWidth: "1000px",
+    alignItems: "center",
+    textAlign: "center"
+  },
+  rightPane: {
+    backgroundColor: "#ffffff",
+    padding: "20px",
+    borderRadius: "10px",
+    boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)",
+    width: "400px",
+    minWidth: "300px",
+    maxWidth: "500px",
+    maxHeight: "500px",
+    overflowY: "auto"
   },
   battleSection: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: "30px"
+    justifyContent: "space-around",
+    marginTop: "20px"
   },
   playerCard: {
-    flex: "1",
-    background: "#e9ecef",
+    backgroundColor: "#e9ecef",
     padding: "15px",
     borderRadius: "10px",
-    margin: "10px",
-    boxShadow: "0px 2px 5px rgba(0,0,0,0.1)"
+    width: "200px"
   },
   battleIcon: {
-    textAlign: "center",
-    padding: "10px"
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: "10px"
   },
   actionButton: {
     backgroundColor: "#ff4552",
     color: "#fff",
-    padding: "10px 20px",
-    fontSize: "16px",
+    padding: "12px 24px",
     border: "none",
-    borderRadius: "6px",
-    cursor: "pointer"
+    borderRadius: "8px",
+    cursor: "pointer",
+    fontWeight: "bold"
+  },
+  logBox: {
+    border: "1px solid #ddd",
+    padding: "10px",
+    borderRadius: "8px",
+    height: "400px",
+    overflowY: "scroll"
   }
 };
 

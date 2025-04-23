@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import LoadingScreen from "./LoadingScreen";
 import Login from "./Login";
 import Home from "./Home";
 import Dashboard from "./Dashboard";
 import AuthSuccess from "./AuthSuccess";
 import AuctionRoom from "./AuctionRoom";
+import AuctionSummary from "./AuctionSummary";
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -47,6 +48,10 @@ function App() {
         <Route
           path="/auction-room/:auctionId"
           element={user ? <AuctionRoom username={user.name} /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/auction-summary"
+          element={user ? <AuctionSummary username={user.name} /> : <Navigate to="/" />}
         />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
