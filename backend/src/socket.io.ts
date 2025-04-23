@@ -73,6 +73,16 @@ export function setupWebSocket(server: Server) {
         }
 
         if (auctionRooms[auctionId].players.length < 2) {
+          if (
+            auctionRooms[auctionId].players.some(
+              (player: any) => player.id === playerId
+            )
+          ) {
+            ws.send(
+              JSON.stringify({ message: "You are already in the auction." })
+            );
+            return;
+          }
           const playerDetails = await AuctionPlayerModel.aggregate([
             {
               $match: {
@@ -89,7 +99,6 @@ export function setupWebSocket(server: Server) {
               },
             },
           ]);
-          console.log(playerDetails);
           auctionRooms[auctionId].players.push({
             id: playerId,
             purse: playerDetails[0].purseAmount,
@@ -106,7 +115,6 @@ export function setupWebSocket(server: Server) {
         }
       }
       let room = auctionRooms[auctionId];
-      console.log(room.players);
       if (playerId !== room.players[room.waitingForBid].id) {
         const player = room.players.find((p) => p.id === playerId);
         player?.ws.send(
