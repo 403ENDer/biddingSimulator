@@ -51,7 +51,7 @@ const Dashboard = ({ username, onLogout }) => {
     } else if (filter === "participated") {
       url += `/participated?playerId=${playerId}`;
     } else if (filter === "all") {
-      // Keep the base URL for all auctions
+      url += `/all`;
     }
 
     try {
@@ -62,6 +62,7 @@ const Dashboard = ({ username, onLogout }) => {
       if (!res.ok) throw new Error("Failed to fetch auctions");
       const data = await res.json();
       setAuctions(data.auctions || []);
+      console.log("Fetched auctions:", data.auctions); 
     } catch (err) {
       setError(err.message || "Something went wrong");
     } finally {
@@ -70,9 +71,23 @@ const Dashboard = ({ username, onLogout }) => {
   };
 
   const handleUpdate = (auction) => {
-    setSelectedAuction({ ...auction });
+    console.log("Auction items:", auction.items);  // Log the auction items
+    setSelectedAuction({
+      _id: auction._id,  // keep original ID
+      id: auction._id,  // include this in the payload
+      name: auction.name, 
+      slots: 2,
+      status: auction.status || "live", // fallback to something valid
+      items: auction.items?.map(item => ({
+        id: item._id || item.id, 
+        name: item.name,
+        price: item.price,
+      })) || []
+    });
     setOpenUpdateDialog(true);
   };
+  
+  
 
   const handleDelete = (auction) => {
     setSelectedAuction(auction);
@@ -110,6 +125,32 @@ const Dashboard = ({ username, onLogout }) => {
   };
 
   const submitUpdate = async () => {
+    // Log the selected auction items to check if id is properly set
+    console.log("Selected Auction Items:", selectedAuction.items);
+  
+    // ✅ Define payload first
+    const payload = {
+      id: selectedAuction._id,
+      status: selectedAuction.status,
+      name: selectedAuction.name,
+      slots: selectedAuction.slots,
+      items: selectedAuction.items.map(item => {
+        // Ensure the item has the 'id' field set
+        if (!item.id) {
+          console.error("Item is missing 'id'", item);
+          return null; // Or you can handle the error differently if necessary
+        }
+        return {
+          id: item.id, // Ensure the item has the 'id'
+          name: item.name,
+          price: item.price
+        };
+      }).filter(item => item !== null), // Remove items that don't have an id
+    };
+  
+    // Log the payload for debugging
+    console.log("Sending update payload:", payload);
+  
     try {
       const response = await fetch(`http://localhost:3333/api/auctions/?id=${selectedAuction._id}`, {
         method: "PATCH",
@@ -117,26 +158,22 @@ const Dashboard = ({ username, onLogout }) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
-        body: JSON.stringify({
-          id: selectedAuction._id,  
-          status: selectedAuction.status,
-          name: selectedAuction.name,
-          slots: selectedAuction.slots,
-          items: selectedAuction.items,
-        }),
+        body: JSON.stringify(payload),
       });
   
       if (response.ok) {
         setOpenUpdateDialog(false);
-        fetchAuctions();  // Refresh the auction list
+        fetchAuctions(); // Refresh the auction list
       } else {
         const errorData = await response.json();
-        console.error("Error response:", errorData);  // Log detailed error response
+        console.error("Error response:", errorData);
       }
     } catch (error) {
       console.error("Error updating auction:", error);
     }
   };
+  
+  
   
   
   const handleItemChange = (index, field, value) => {
@@ -229,16 +266,21 @@ const Dashboard = ({ username, onLogout }) => {
                 <div style={styles.cardHeader}>
                   <h4 style={{ fontSize: "23px" }}>{auction.name}</h4>
                   <div>
-                    <IconButton onClick={() => handleUpdate(auction)}>
-                      <SystemUpdateAltIcon style={{ color: "#ff4552" }} />
-                    </IconButton>
-                    <IconButton onClick={() => handleDelete(auction)}>
-                      <DeleteIcon style={{ color: "#ff4552" }} />
-                    </IconButton>
+                    {(filter === "created") && (
+                      <>
+                        <IconButton onClick={() => handleUpdate(auction)}>
+                          <SystemUpdateAltIcon style={{ color: "#ff4552" }} />
+                        </IconButton>
+                        <IconButton onClick={() => handleDelete(auction)}>
+                          <DeleteIcon style={{ color: "#ff4552" }} />
+                        </IconButton>
+                      </>
+                    )}
                     <IconButton onClick={() => handleCopyId(auction._id)}>
                       <ContentCopyIcon style={{ color: "#ff4552" }} />
                     </IconButton>
                   </div>
+
                 </div>
                 <p>
                   <EmojiEventsIcon style={{ verticalAlign: "middle", marginRight: "5px" }} />
@@ -270,16 +312,7 @@ const Dashboard = ({ username, onLogout }) => {
             }
             margin="dense"
           />
-          <TextField
-            fullWidth
-            type="number"
-            label="Slots"
-            value={selectedAuction?.slots || ""}
-            onChange={(e) =>
-              setSelectedAuction({ ...selectedAuction, slots: Number(e.target.value) })
-            }
-            margin="dense"
-          />
+          
           <TextField
               fullWidth
               label="Status"  // Add status field

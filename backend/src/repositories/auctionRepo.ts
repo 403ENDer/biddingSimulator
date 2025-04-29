@@ -116,30 +116,35 @@ export class AuctionRepo {
 
   public static async GetAuctionsByCreator(playerId: string) {
     const objectId = new mongoose.Types.ObjectId(playerId);
-
+  
     const auctions = await AuctionModel.find({ createdBy: objectId }).lean();
-
+  
     if (!auctions.length) return [];
-
+  
     const auctionIds = auctions.map((a) => a._id);
-
+  
     const items = await AuctionItemModel.find({
       auctionId: { $in: auctionIds },
     }).lean();
-
+  
     const combined = auctions.map((a) => {
       const auctionItems = items
         .filter((i) => i.auctionId.toString() === a._id.toString())
-        .map((i) => ({ name: i.name, price: i.price }));
-
+        .map((i) => ({
+          id: i._id.toString(),  // Include the _id field as the id
+          name: i.name,
+          price: i.price,
+        }));
+  
       return {
         ...a,
         items: auctionItems,
       };
     });
-
+  
     return combined;
   }
+  
 
   public static async GetAllAuctions() {
     return AuctionModel.find().sort({ createdAt: -1 });

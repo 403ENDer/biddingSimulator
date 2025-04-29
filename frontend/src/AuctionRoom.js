@@ -13,6 +13,7 @@ import Button from "@mui/material/Button";
 
 const AuctionRoom = ({ username, onLogout }) => {
   const { auctionId } = useParams();
+  const navigate = useNavigate();
   const [auctionData, setAuctionData] = useState(null);
   const [socket, setSocket] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -29,9 +30,13 @@ const AuctionRoom = ({ username, onLogout }) => {
   const [snackbarMsg, setSnackbarMsg] = useState("");
   const [snackbarSeverity, setSnackbarSeverity] = useState("info");
   const [lastTextMessage, setLastTextMessage] = useState("");
-  const [openConfirmDialog, setOpenConfirmDialog] = useState(false); // State for dialog
+  const [openConfirmDialog, setOpenConfirmDialog] = useState(false); 
   const [actionType, setActionType] = useState(""); 
-  const navigate = useNavigate();
+  const [openInsufficientFundsDialog, setOpenInsufficientFundsDialog] = useState(false);
+  const [insufficientFundsMessage, setInsufficientFundsMessage] = useState("");
+  const [auctionEnded, setAuctionEnded] = useState(false);
+  const [auctionSummary, setAuctionSummary] = useState([]);
+
 
 
   useEffect(() => {
@@ -103,56 +108,79 @@ const AuctionRoom = ({ username, onLogout }) => {
       }
 
       // Handle strategy and optimal strategy messages
-      if (msg.type === "strategy" || msg.type === "optimalStrategy") {
-        setSnackbarMsg(msg.message);
+      if (msg.type === "strategy") {
+        const strategyMessage = msg.optimalStrategy;
+        setSnackbarMsg(strategyMessage);
         setSnackbarSeverity("info");
         setSnackbarOpen(true);
-        setMessages((prev) => [...prev, msg.message]);
+        setMessages((prev) => [...prev, strategyMessage]);
       }
 
       // Handle general messages and bids
       if (msg.type === "bid" || msg.type === "playerUpdate") {
-        if (msg.playerId === localStorage.getItem("playerId")) {
-          setSnackbarMsg(`${msg.name} has updated their bid.`);
+        const isCurrentPlayer = msg.playerId === localStorage.getItem("playerId");
+      
+        const updatedPlayer = {
+          name: msg.name,
+          purse: msg.purse,
+          currentBid: msg.currentBid,
+          id: msg.playerId,
+        };
+      
+        if (isCurrentPlayer) {
+          setPlayerInfo((prev) => ({
+            ...prev,
+            ...updatedPlayer,
+          }));
+        } else {
+          setOpponentInfo((prev) => ({
+            ...prev,
+            ...updatedPlayer,
+          }));
+        }
+      
+        setSnackbarMsg(`${msg.name} has updated their bid.`);
+        setSnackbarSeverity("info");
+        setSnackbarOpen(true);
+      }
+
+      if (msg.message === "Auction started") {
+        const fullMessage = msg.optimalStrategy
+          ? `${msg.message} – ${msg.optimalStrategy}`
+          : msg.message;
+      
+        setSnackbarMsg(fullMessage);
+        setSnackbarSeverity("info");
+        setSnackbarOpen(true);
+      
+        setMessages((prev) => [...prev, fullMessage]);
+      }
+      
+      try {
+        const parsedMsg = JSON.parse(msg.message);
+        console.log("Parsed Message:", parsedMsg);
+    
+        // Handle auction ended message
+        if (parsedMsg.message && parsedMsg.message.trim() === "Auction ended.") {
+          console.log("Auction ended, triggering dialog.");
+          setAuctionSummary(parsedMsg.gains); // Assuming parsedMsg.gains contains the array you need
+          setAuctionEnded(true);
+        } else {
+          console.log("Auction did not end, message content:", parsedMsg.message);
+          setMessages((prev) => [...prev, parsedMsg.message]);
+          setSnackbarMsg(parsedMsg.message);
           setSnackbarSeverity("info");
           setSnackbarOpen(true);
-          setPlayerInfo(msg);
-        } else {
-          setOpponentInfo(msg);
         }
+      } catch (err) {
+        // If parsing fails, it's likely a non-JSON message, so handle as plain text
+        console.warn("Non-JSON message received:", msg.message);
+        setMessages((prev) => [...prev, msg.message]);
+        setSnackbarMsg(msg.message);
+        setSnackbarSeverity("info");
+        setSnackbarOpen(true);
       }
-
-      // Handle other messages
-      if (msg.message && !msg.type) {
-        try {
-          const parsed = JSON.parse(msg.message);
-
-          if (Array.isArray(parsed)) {
-            if (lastTextMessage.toLowerCase().includes("player wins")) {
-              setWinnerMessage(`⚠️ ${lastTextMessage}`);
-              setWinnerData(parsed);
-              setShowWinnerDialog(true);
-              setTimeout(() => {
-                setShowWinnerDialog(false);
-              }, 10000);
-              setLastTextMessage("");
-
-              navigate(`/auction-summary`, { state: { auctionSummary: auctionData, winnerData: parsed } });
-            }
-          } else {
-            setMessages((prev) => [...prev, `⚠️ ${msg.message}`]);
-            setSnackbarMsg(`⚠️ ${msg.message}`);
-            setSnackbarSeverity("warning");
-            setSnackbarOpen(true);
-          }
-
-        } catch (e) {
-          setMessages((prev) => [...prev, `⚠️ ${msg.message}`]);
-          setSnackbarMsg(`⚠️ ${msg.message}`);
-          setSnackbarSeverity("warning");
-          setSnackbarOpen(true);
-        }
-      }
+      
     };
 
     ws.onerror = (error) => {
@@ -189,17 +217,14 @@ const AuctionRoom = ({ username, onLogout }) => {
             auctionId,
           })
         );
-        setPlayerInfo((prevState) => ({
-          ...prevState,
-          purse: prevState.purse - bid,
-          currentBid: bid,
-        }));
-        setBidAmount("");
+        setBidAmount(""); // Clear input, but don’t update purse yet
       } else {
-        alert("You do not have enough funds to place this bid.");
+        setInsufficientFundsMessage("You do not have enough funds to place this bid.");
+        setOpenInsufficientFundsDialog(true);
       }
     }
   };
+  
 
   const handleQuit = () => {
     setActionType("quit");
@@ -210,6 +235,12 @@ const AuctionRoom = ({ username, onLogout }) => {
     setActionType("leave");
     setOpenConfirmDialog(true);
   };
+
+  const handleCloseDialog = () => {
+    setAuctionEnded(false);
+    navigate("/home"); 
+  };
+  
 
   const handleConfirmAction = () => {
     if (actionType === "quit") {
@@ -325,13 +356,29 @@ const AuctionRoom = ({ username, onLogout }) => {
             {snackbarMsg}
           </Alert>
         </Snackbar>
+        {/* Insufficient Funds Dialog */}
+        <Dialog
+          open={openInsufficientFundsDialog}
+          onClose={() => setOpenInsufficientFundsDialog(false)}
+        >
+          <DialogTitle>{"Insufficient Funds"}</DialogTitle>
+          <DialogContent>
+            <p>{insufficientFundsMessage}</p>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenInsufficientFundsDialog(false)} color="primary">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+
 
         {/* RIGHT SECTION */}
         <div style={styles.rightPane}>
           <h3 style={{ textAlign: "center", marginBottom: "10px" }}>Auction Logs</h3>
           <div style={styles.logBox}>
             {messages.map((msg, idx) => (
-              <p key={idx} style={{ margin: "4px 0" }}>{msg}</p>
+              <p key={idx} style={{ margin: "4px 0" }}>⚠️{msg}</p>
             ))}
           </div>
         </div>
@@ -352,6 +399,35 @@ const AuctionRoom = ({ username, onLogout }) => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog
+        open={auctionEnded}
+        onClose={() => setAuctionEnded(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Auction Summary</DialogTitle>
+        <DialogContent>
+          {auctionSummary.length === 0 ? (
+            <p>No data available for the summary.</p>
+          ) : (
+            <ul>
+              {auctionSummary.map((entry, idx) => (
+                <li key={idx}>
+                  <strong>{entry.name}</strong>: Gain ₹{entry.gain}
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog} color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+
     </div>
   );
 };

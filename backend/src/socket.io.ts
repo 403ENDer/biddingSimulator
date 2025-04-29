@@ -7,7 +7,6 @@ import {
   getOptimalBidRange,
   getBiddingSuggestion,
 } from "./repositories/optimalStrategy.js";
-import AuctionModel from "./model/auctionModel.js";
 
 interface Player {
   id: string;
@@ -73,50 +72,92 @@ export function setupWebSocket(server: Server) {
           };
         }
 
-        if (auctionRooms[auctionId].players.length < 2) {
-          if (
-            auctionRooms[auctionId].players.some(
-              (player: any) => player.id === playerId
-            )
-          ) {
-            ws.send(
-              JSON.stringify({ message: "You are already in the auction." })
-            );
-            return;
+        const room = auctionRooms[auctionId];
+
+        // Prevent duplicate player
+        // Handle player reconnect or initial join
+          const existingPlayer = room.players.find((p) => p.id === playerId);
+
+          if (!existingPlayer) {
+            // New player joining
+            const playerDetails = await AuctionPlayerModel.aggregate([
+              {
+                $match: {
+                  playerId: new mongoose.Types.ObjectId(playerId),
+                  auctionId: new mongoose.Types.ObjectId(auctionId),
+                },
+              },
+              {
+                $lookup: {
+                  from: "players",
+                  localField: "playerId",
+                  foreignField: "_id",
+                  as: "playerDetails",
+                },
+              },
+            ]);
+
+            if (
+              !playerDetails.length ||
+              !playerDetails[0].playerDetails.length
+            ) {
+              ws.send(JSON.stringify({ message: "Invalid player data." }));
+              return;
+            }
+
+            room.players.push({
+              id: playerId,
+              purse: playerDetails[0].purseAmount,
+              name: playerDetails[0].playerDetails[0].name,
+              strategyLimitItem1: null,
+              strategyLimitItem2: null,
+              ws,
+            });
+          } else {
+            // Existing player refreshed — just update their WebSocket
+            existingPlayer.ws = ws;
           }
-          const playerDetails = await AuctionPlayerModel.aggregate([
-            {
-              $match: {
-                playerId: new mongoose.Types.ObjectId(playerId),
-                auctionId: new mongoose.Types.ObjectId(auctionId),
-              },
-            },
-            {
-              $lookup: {
-                from: "players",
-                localField: "playerId",
-                foreignField: "_id",
-                as: "playerDetails",
-              },
-            },
-          ]);
-          auctionRooms[auctionId].players.push({
-            id: playerId,
-            purse: playerDetails[0].purseAmount,
-            name: playerDetails[0].playerDetails[0].name,
-            strategyLimitItem1: null,
-            strategyLimitItem2: null,
-            ws,
+
+
+        if (room.players.length === 2) {
+          const [p1, p2] = room.players;
+
+          [p1, p2].forEach((p, i) => {
+            const opponent = i === 0 ? p2 : p1;
+            p.ws.send(
+              JSON.stringify({
+                type: "playerJoined",
+                playerInfo: {
+                  id: p.id,
+                  name: p.name,
+                  purse: p.purse,
+                  currentBid: 0,
+                },
+                opponentInfo: {
+                  id: opponent.id,
+                  name: opponent.name,
+                  purse: opponent.purse,
+                  currentBid: 0,
+                },
+              })
+            );
           });
-        }
-        if (auctionRooms[auctionId].players.length === 2) {
+
           startAuction(auctionId);
         } else {
           ws.send(JSON.stringify({ message: "Waiting for another player..." }));
         }
       }
-      let room = auctionRooms[auctionId];
-      if (playerId !== room.players[room.waitingForBid].id) {
+
+      const room = auctionRooms[auctionId!];
+      if (!room) return;
+
+      if (room.players.length < 2) {
+        ws.send(JSON.stringify({ message: "Waiting for another player to join." }));
+        return;
+      }
+      
+      if (playerId !== room.players[room.waitingForBid]?.id) {
         const player = room.players.find((p) => p.id === playerId);
         player?.ws.send(
           JSON.stringify({
@@ -124,7 +165,7 @@ export function setupWebSocket(server: Server) {
           })
         );
         return;
-      }
+      }      
 
       if (data.type === "bid") {
         handleBid(auctionId!, playerId!, data.amount);
@@ -235,43 +276,49 @@ async function handleBid(auctionId: string, playerId: string, amount: number) {
   room.waitingForBid = (room.waitingForBid + 1) % 2;
 
   // 🔄 Broadcast the structured bid message to both players
+  // ✅ Broadcast full player info so frontend doesn't lose state
   room.players.forEach((p) => {
     p.ws.send(
       JSON.stringify({
         type: "bid",
-        playerId: playerId,
+        playerId: player.id,
+        name: player.name,
+        purse: player.purse,
+        currentBid: amount,
         amount,
       })
     );
-  });
+});
+
 
   // 📢 Send strategic suggestion messages
   const opponent = room.players.find((pl) => pl.id !== playerId);
-  const item1WonByPlayer = room.items[0].winBy?.toString() === playerId;
+const item1WonByPlayer = room.items[0].winBy?.toString() === playerId;
 
-  const strategySuggestion = getBiddingSuggestion({
-    currentItem: room.currentItem.id === room.items[0].id ? 1 : 2,
-    currentBid: room.highestBid,
-    strategyLimit:
-      room.currentItem.id === room.items[0].id
-        ? player.strategyLimitItem1
-        : player.strategyLimitItem2,
-    playerPurse: player.purse,
-    opponentPurse: opponent?.purse || 0,
-    item1WonByPlayer,
-    item1Price: room.items[0].price,
-    item1Value: room.items[0].price,
-    item2Value: room.items[1].price,
-  });
+const strategySuggestion = getBiddingSuggestion({
+  currentItem: room.currentItem.id === room.items[0].id ? 1 : 2,
+  currentBid: room.highestBid,
+  strategyLimit:
+    room.currentItem.id === room.items[0].id
+      ? player.strategyLimitItem1
+      : player.strategyLimitItem2,
+  playerPurse: player.purse,
+  opponentPurse: opponent?.purse || 0,
+  item1WonByPlayer,
+  item1Price: room.items[0].price,
+  item1Value: room.items[0].price,
+  item2Value: room.items[1].price,
+});
 
-  // ✅ Send ONLY to the bidding player
-  player.ws.send(
-    JSON.stringify({ type: "strategy", optimalStrategy: strategySuggestion })
-  );
+// ✅ Send ONLY to the bidding player
+player.ws.send(
+  JSON.stringify({ type: "strategy", optimalStrategy: strategySuggestion })
+);
 
   // ➡️ Move to next turn
   startBidding(auctionId);
 }
+
 
 // ----------- QUIT / LEAVE / END -----------
 
@@ -309,7 +356,7 @@ function handleQuit(auctionId: string, playerId: string) {
 
 async function handleGain(room: any) {
   const completedItem = await AuctionItemModel.findById(room.currentItem.id);
-
+  
   if (completedItem) {
     completedItem.winBy = room.highestBidder.id;
     await completedItem.save();
@@ -321,9 +368,10 @@ async function handleGain(room: any) {
 
   if (playerGain) {
     playerGain.gain += completedItem.price - room.highestBid;
-    await playerGain.save();
+    await playerGain.save();  
   }
 }
+
 
 function handleLeave(auctionId: string, playerId: string) {
   const room = auctionRooms[auctionId];
@@ -348,10 +396,7 @@ function handleLeave(auctionId: string, playerId: string) {
       room.highestBid = Math.floor(remainingPlayer.purse * 0.2);
       room.highestBidder = remainingPlayer;
       handleGain(room);
-      notifyAll(
-        auctionId,
-        `Player ${remainingPlayer.name} wins remaining item`
-      );
+      notifyAll(auctionId, `Player ${remainingPlayer.name} wins remaining item`);
     }
   }
 
@@ -378,8 +423,6 @@ async function endAuction(auctionId: any) {
       gains: playerGains,
     })
   );
-
-  await AuctionModel.findByIdAndUpdate(auctionId, { status: "completed" });
 
   delete auctionRooms[auctionId];
 }
