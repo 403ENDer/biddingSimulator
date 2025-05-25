@@ -28,7 +28,7 @@ Biddr is a web-based open bidding platform designed to simulate real-world aucti
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/biddr.git
+git clone https://github.com/403ENDer/biddingSimulator.git
 cd biddr
 ````
 
