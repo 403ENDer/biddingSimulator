@@ -1,4 +1,4 @@
-# 🏷️ Open Bidding Simulation - Biddr
+# 🔨 Open Bidding Simulation - Biddr
 
 Biddr is a web-based open bidding platform designed to simulate real-world auction dynamics using core concepts from economics and game theory. Built with the **MERN** stack, Biddr provides an interactive environment for users to participate in auctions as rational agents, allowing real-time bidding, data analytics, and auction strategy exploration.
 
